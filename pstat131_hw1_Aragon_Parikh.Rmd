@@ -1,0 +1,397 @@
+---
+title: "PSTAT 131 Homework 1"
+author: "Luis Aragon and Ronak Parikh"
+date: "4/10/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# PROBLEM 1
+```{r}
+# Need Packages
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+
+
+# Load Data
+algae <- read_table2("algaeBloom.txt", col_names=
+                       c('season','size','speed','mxPH','mnO2','Cl','NO3','NH4',
+                         'oPO4','PO4','Chla','a1','a2','a3','a4','a5','a6','a7'),na="XXXXXXX")
+
+# Summary of dataset
+glimpse(algae)
+```
+
+## PART 1A
+```{r}
+# observations in each season
+algae %>%
+  group_by(season) %>%
+  summarise(n())
+```
+
+## PART 1B
+```{r}
+# Count number of missing values
+paste("Number of missing values", sum(is.na(algae)))
+
+# Mean for each chemical
+chemMean <- algae %>%
+  select(-c(season, size, speed, a1:a7, mxPH)) %>%
+  summarise_all(mean, na.rm = TRUE)
+chemMean
+  
+# Variance for each chemical
+chemVar <- algae %>%
+  select(-c(season, size, speed, a1:a7, mxPH)) %>%
+  summarise_all(var, na.rm = TRUE)
+chemVar
+```
+
+We can see that the quantities vary drastically from mean of 3.2824 for NO3 to mean of 137.5906 for PO4. Additionally, the variance is incredibly large for certain chemicals such as Cl NH4 and PO4. 
+
+
+## PART 1C
+```{r}
+# Median for each chemical
+chemMedian <- algae %>%
+  select(-c(season, size, speed, a1:a7, mxPH)) %>%
+  summarise_all(median, na.rm = TRUE)
+chemMedian
+
+# MAD for each chemical
+chemMAD <- algae %>%
+  select(-c(season, size, speed, a1:a7, mxPH)) %>%
+  summarise_all(mad, na.rm = TRUE)
+chemMAD
+
+# Create dataframe for comparison
+compareDF <- data.frame(rbind(chemMean, chemVar, chemMedian, chemMAD))
+row.names(compareDF) <- c("Mean", "Var", "Median", "MAD")
+compareDF
+```
+
+The MAD and the median are relatively close for each element except for mnO2 where the median is much larger than the MAD. Perhaps these measurements are closer than the mean and variance measurements because they are less sensitive to outliers.
+
+# PROBLEM 2
+## PART 2A
+```{r}
+# Histogram of mxPH
+ggplot(algae, aes(mxPH), na.rm=TRUE) +
+  geom_histogram(aes(y = stat(density)))
+```
+
+## PART 2B
+```{r}
+# Add geom_density and geom_rug
+ggplot(algae, aes(mxPH), na.rm=TRUE) +
+  geom_histogram(aes(y = stat(density))) +
+  geom_density() + geom_rug() + ggtitle('Histogram of mxPH')
+```
+
+The distribution of the mxPH does not look significantly skewed. It looks like it comes from a normal distribution with a mean around 8 mxPH. If we wanted to confirm it comes from a normal distribution, we would use a normal QQ Plot. Furthermore, there seems to be outliers with low mxPH. Again, this is from visual inference because  we have not definitively named them outliers. 
+
+## PART 2C
+```{r}
+# Boxplot
+ggplot(algae, aes(x=size, y=a1)) + 
+  geom_boxplot() +
+  ggtitle('A conditioned Boxplot of Algal a1')
+```
+
+## PART 2D
+```{r}
+no3_hist <- ggplot(algae, aes(NO3, stat(density))) +
+  geom_histogram() + ggtitle('Histogram of NO3') +
+  geom_density()
+
+nh4_hist <- ggplot(algae, aes(NH4, stat(density))) +
+  geom_histogram() + ggtitle('Histogram of NH4') +
+  geom_density()
+
+# Plot histograms
+grid.arrange(no3_hist, nh4_hist, nrow=2)
+```
+
+By visual observation, we see that there are high outliers for both $NO_3$ and $NH_4$ to the far right. We need an objective way to identify these outliers. Since we are not fitting a model, we can use the simple Interquartile range (IQR) method.
+
+We will use the Interquartile range (IQR) method to find outliers for $NO_3$ and $NH_4$. This common objective method defines a boundary using the IQR and any observation outside the boundary is considered an outlier. The boundary is defined by $$Upper. Q3 + 1.5 * IQR$$ $$Lower:Q1 - 1.5 * IQR$$ where Q2 and Q3 are the 25 and 75 quartiles and $IQR = Q3-Q1$
+```{r}
+# IQR Method
+# Compute boundaries
+outlier_cutoff_upper <- quantile(algae$NO3, 0.75, na.rm = TRUE) + 1.5 * IQR(algae$NO3, na.rm = TRUE)
+outlier_cutoff_lower <- quantile(algae$NO3, 0.25, na.rm = TRUE) - 1.5 * IQR(algae$NO3, na.rm = TRUE)
+
+# Extract observations outside boundaries
+index_outlier <- which(algae$NO3 > outlier_cutoff_upper | algae$NO3 < outlier_cutoff_lower)
+length(index_outlier)
+```
+Using the Interquartile Range Method, we found 5 outliers for $NO_3$. We will repeat the method for $NH_4$.
+ 
+```{r}
+# IQR Method
+# Compute boundaries
+outlier_cutoff_upper_nh4 <- quantile(algae$NH4, 0.75, na.rm = TRUE) + 1.5 * IQR(algae$NH4, na.rm = TRUE)
+outlier_cutoff_lower_nh4 <- quantile(algae$NH4, 0.25, na.rm = TRUE) - 1.5 * IQR(algae$NH4, na.rm = TRUE)
+
+# Extract observations outside boundaries
+index_outlier_nh4 <- which(algae$NH4 > outlier_cutoff_upper_nh4 | algae$NH4 < outlier_cutoff_lower_nh4)
+length(index_outlier_nh4)
+```
+
+Using the IQR method, we discovered 27 outliers fro NH4.
+
+## PART 2E
+```{r}
+mean_no3_nh4 <- algae %>%
+  select(c(NO3, NH4)) %>%
+  summarise_all(mean, na.rm = TRUE)
+  
+# Variance for each chemical
+var_no3_nh4 <- algae %>%
+  select(c(NO3, NH4)) %>%
+  summarise_all(var, na.rm = TRUE)
+
+median_no3_nh4 <- algae %>%
+  select(c(NO3, NH4)) %>%
+  summarise_all(median, na.rm = TRUE)
+
+
+MAD_no3_nh4 <- algae %>%
+  select(c(NO3, NH4)) %>%
+  summarise_all(mad, na.rm = TRUE)
+
+# Create dataframe for comparison
+df_no3_nh4 <- data.frame(rbind(mean_no3_nh4, var_no3_nh4, median_no3_nh4, MAD_no3_nh4))
+row.names(df_no3_nh4) <- c("Mean", "Var", "Median", "MAD")
+df_no3_nh4
+```
+
+After looking at the data.frame above, we noticed that the median of NH4 is much lower than the mean. Additionally, the variance of NH4 is very high because of the abudance of outliers in the data.
+
+Aftering comparing NO3 and NH4, it appears that the median and median absolute deviation are more robust when outliers are present because of the large differences in mean and variance between the two chemicals.
+ 
+# PROBLEM 3
+## PART 3A
+```{r}
+# Count observations with missing columns
+rowMiss <- sum(!complete.cases(algae))
+paste("Num of observations with NA: ", rowMiss)
+
+# Print missing values per column
+sapply(algae, function(x) sum(is.na(x)))
+```
+
+Above is a table showing missing values for each chemical.
+
+## PART 3B
+```{r}
+# Filter data by complete cases
+algae.del <- filter(algae, complete.cases(algae))
+
+# Count up complete cases
+tally(algae.del)
+```
+
+The data set `algae.del` has 184 total observations
+
+## PART 3C
+```{r}
+# Imputate: NA --> Median of column
+algae.med <- algae %>%
+  mutate_at(.vars = vars(mxPH:Chla), funs(ifelse(is.na(.),median(., na.rm = TRUE),.)))
+
+# Print 1st 3 rows
+head(algae.med, 3)
+
+# Display 48, 62, 199
+cbind(observation = c(48,62,199), rbind(algae.med[48,1:11], algae.med[62,1:11], algae.med[199,1:11]))
+```
+
+Above, we imputed missing values with the median of the column and then printed a table containing the 48th, 62nd, and 199th observations.
+
+## PART 3D
+```{r}
+library(reshape2)
+xmat <- algae %>% select(c(mxPH:Chla))
+algae_corr = cor(xmat, use = "complete.obs")
+algae_corr
+
+ggplot(data = melt(algae_corr), aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile() + ggtitle("Pairwise Correlations of Chemicals")
+
+model <- lm(data = algae, PO4 ~ oPO4)
+
+algae$oPO4[28] <- predict(model, algae[28,])
+paste("Imputed Value from Regression:", algae$oPO4[28])
+```
+
+The value we obtained for the 28th oberservation has the PO4 value is 48.06929. The pairwise correlation can be seen in `algae.cor` above. A heat map of the correlations can also be shown above.
+
+## PART 3E
+Similar to the surviorship bias with the airplanes in lecture 2, we can apply a similar principle to this dataset. Because there may be bias in previously measured data, imputution may not be a proper substitute for missing data values.
+
+The data for the algae was collected from European rivers at different times during a period of approximately 1 year. Some of the algae might have more or less concentration of algae based on the season of the year. In addition, different parts of the river may have different concentrations of algae and thus would not be ideal for imputation.
+
+# PROBLEM 4
+## PART 4A
+```{r}
+# Create 5 groups
+# set.seed(343)
+partitions <- cut(1:200, label = FALSE, breaks = 5) %>%
+  sample()
+```
+
+```{r}
+# Cross Validation function
+do.chunk <- function(chunkid, chunkdef, dat){ # function argument
+  
+  train = (chunkdef != chunkid)
+  
+  Xtr = dat[train,1:11] # get training set
+  Ytr = dat[train,12] # get true response values in trainig set
+  Xvl = dat[!train,1:11] # get validation set
+  Yvl = dat[!train,12] # get true response values in validation set
+  
+  lm.a1 <- lm(a1~., data = dat[train,1:12])
+  predYtr = predict(lm.a1) # predict training values
+  predYvl = predict(lm.a1,Xvl) # predict validation values
+  
+  data.frame(fold = chunkid,
+             train.error = mean((predYtr - Ytr$a1)^2), # compute and store training error
+             val.error = mean((predYvl - Yvl$a1)^2)) # compute and store test error
+}
+```
+
+```{r}
+# 5 folds
+lapply(1:5, do.chunk, chunkdef = partitions, dat=algae.med)
+```
+
+# PROBLEM 5
+```{r}
+# Read in data
+algae.Test <- read_table2('algaeTest.txt',
+                          col_names=c('season','size','speed','mxPH','mnO2','Cl','NO3',
+                                      'NH4','oPO4','PO4','Chla','a1'),
+                          na=c('XXXXXXX'))
+
+# Define model using algae.med
+model <- lm(a1~., data = algae.med[, 1:12])
+
+# Use model on algae.Test
+# Predict + Calculate true error
+mean((algae.Test$a1 - predict.lm(model, algae.Test)) ^ 2)
+```
+
+This true error of 250.1794, is what we expect because the validation error from part 4 varies from 250 to 450 (with the training errors closer to 250) depending on the randoming sorting of the 5 folds. Considering that we are testing on more data in algae.Test (coming from the same distribution as alga.med), it makes sense that the test error is closer to 250.
+
+# PROBLEM 6
+```{r}
+# Load in packag for data
+library(ISLR)
+
+# First few rows of Wage data
+head(Wage)
+```
+
+## PART 6A
+```{r}
+# Plot age vs wage
+ggplot(Wage, aes(x = age, y = wage)) + 
+  geom_point(alpha = 0.3) + 
+  geom_smooth(color = 'red') + 
+  ggtitle('Plot of Age vs Wage')
+```
+
+This plot matches what we expect. As age increases, wage goes from increasing to plateauing to decreasing. This follows expected career trajectories (from entry level position to promotions to retirement).
+
+## PART B.i
+```{r}
+# Loop to fit model for each p = 0:10
+p = 0
+while (p < 10) {
+  if (p==0) {
+    fit <-lm(Wage$wage~1)   # fit model on intercept
+    }
+  else {
+    fit <-lm(wage~poly(age, p), data=Wage)   # fit model with polynomial p
+    }
+  print(fit)
+  p = p+1
+}
+```
+
+## PART 6B.ii
+```{r}
+set.seed(96)
+
+# Create 5 partitions
+partitions2 <- cut(1:nrow(Wage), label=FALSE, breaks=5) %>% sample()
+head(partitions2)
+```
+
+```{r}
+# CV function
+do.chunk2 <- function(chunkid, chunkdef, dat, l){ # function argument
+  
+  train = (chunkdef != chunkid)
+  
+  training = dat[train,]
+  testing = dat[!train,]
+  
+  # fit training data to model
+  if (l==0) {
+    fitwage <-lm(wage ~ 1, data = dat[train,])
+    }
+  else {
+    fitwage <-lm(wage ~ poly(age, degree=l), data = dat[train,])
+    }
+  
+  predYtr = predict(fitwage) # predict training values
+  predYvl = predict(fitwage, testing) # predict validation values
+  
+  data.frame(fold = chunkid,
+             train.error = mean((predYtr - training$wage)^2), # compute and store training error
+             val.error = mean((predYvl - testing$wage)^2)) # compute and store test error
+}
+```
+
+```{r}
+test.errors=NULL
+train.errors=NULL
+
+set.seed(131)
+# Train and test for each polynomial l
+for (i in 0:10) {
+  
+  # Get 5 fold CV for polynomial l
+  tmp = lapply(1:5, do.chunk2, chunkdef=partitions2, dat=Wage[,c("age","wage")], l=i)
+  
+  # Get average training error over 5 folds
+  mean.err.train = mean(c(tmp[[1]][["train.error"]], tmp[[2]][["train.error"]],
+                       tmp[[3]][["train.error"]], tmp[[4]][["train.error"]],
+                       tmp[[5]][["train.error"]]))
+  
+  # Get average testing error over 5 folds
+  mean.err.test = mean(c(tmp[[1]][["val.error"]], tmp[[2]][["val.error"]],
+                     tmp[[3]][["val.error"]], tmp[[4]][["val.error"]],
+                     tmp[[5]][["val.error"]]))
+  
+  # Append to vector
+  train.errors = c(train.errors, mean.err.train)
+  test.errors = c(test.errors, mean.err.test)
+}
+
+# Create dataframe with polynomials and errors
+polynomial <- c(0:10)
+error.df <- data.frame(polynomial, train.errors, test.errors)
+
+# Print errors
+grid.table(error.df)
+```
